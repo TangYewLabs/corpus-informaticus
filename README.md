@@ -1,48 +1,148 @@
-# Corpus Informaticus
+# Corpus Informaticus (CI3)
 
-A volumetric, tensor-native data container for representing information as a **3D body** instead of a flat byte stream.
-
-This repo implements the first two protocol versions:
-
-- **v0.1 – Single-channel corpus**
-  - 16 × 16 × 16 grid (4096 voxels)
-  - 1 byte per voxel (payload only)
-  - Fixed-capacity container for arbitrary data up to 4096 bytes
-  - CRC32 integrity over the whole volume
-
-- **v0.2 – Anatomy v1 (multi-channel voxels)**
-  - Same 16 × 16 × 16 geometry
-  - 4 channels per voxel:
-    - `payload`  – primary data
-    - `integrity` – per-voxel integrity / quality (0–255, v0.2 uses 255 everywhere)
-    - `semantic`  – semantic label (0 = unknown for now)
-    - `aux`       – auxiliary / experimental
-  - CRC32 over all channels
-  - Still 4096 bytes of payload capacity, but now with an anatomical field around it
-
-The goal is to explore **multi-dimensional data transfer and storage** for:
-
-- Robotics & simulation
-- 3D sensing and digital twins
-- AI memory structures and volumetric embeddings
+![Corpus Banner](docs/media/banner.png)
 
 ---
 
-## Layout
+## Overview
 
-```text
-corpus-informaticus/
-  README.md
-  specs/
-    ci-v0.1-spec.md   # v0.1 formal spec
-    ci-v0.2-spec.md   # v0.2 anatomy spec
-  src/
-    corpus_informaticus/
-      __init__.py
-      ci3_types.py     # header/footer defs, constants
-      ci3_codec.py     # v0.1 + v0.2 encode/decode
-      ci3_visualizer.py# simple slice viewer for v0.1
-  examples/
-    hello_corpus/      # v0.1 string demo + slice view
-    file_roundtrip/    # v0.1 arbitrary file → CI3 → file
-    v02/               # v0.2 encode/decode + channel inspection
+Corpus Informaticus is a **volumetric, tensor-native data container** that stores information as a **3D voxel body** instead of a traditional linear byte stream.
+
+This early experimental release provides two reference specifications:
+
+---
+
+## v0.1 — Single-Channel Corpus
+
+- **16 × 16 × 16 lattice** (4096 voxels)
+- **1 byte per voxel** (4096-byte capacity)
+- **Lossless round-trip** for any file ≤ 4096 bytes
+- **CRC32** integrity check over the full volume
+- Python examples:
+  - Encode & decode (“Hello Corpus”)
+  - Arbitrary file → `.ci3` → file
+  - 2D voxel slice visualization
+
+---
+
+## v0.2 — Anatomy v1 (Multi-Channel Voxels)
+
+![CI3 Voxel Anatomy](docs/media/voxel_anatomy.png)
+
+- Same **16 × 16 × 16 geometry**
+- **4 channels per voxel**:
+  - `payload`   — primary data
+  - `integrity` — per-voxel quality (0–255)
+  - `semantic`  — semantic tag (0 = unset)
+  - `aux`       — experimental / future use
+- **CRC32** over all channels
+- Examples:
+  - Multi-channel encoding
+  - Multi-channel decoding
+  - Channel slice viewing via NumPy
+
+These channels introduce early support for **3D semantics**, **integrity layers**, and **future multimodal expansion**.
+
+---
+
+## Philosophy
+
+Traditional files are linear.  
+Robotics, simulation, and AI perception are not.
+
+CI3 explores **data structures that match how advanced systems think**:
+
+- Volumetric memory  
+- Spatially coherent data  
+- Multi-channel tensors  
+- Integrity gradients  
+- Semantic regions  
+
+This is a research-driven, open, extensible format — intended to grow in public.
+
+---
+
+## Getting Started
+
+### Clone the repo
+
+```bash
+git clone https://github.com/IoTIVP/corpus-informaticus.git
+cd corpus-informaticus
+pip install matplotlib numpy
+```
+
+---
+
+## v0.1 Examples
+
+### Encode a demo corpus
+
+```bash
+python examples/hello_corpus/encode_hello.py
+```
+
+### Decode it
+
+```bash
+python examples/hello_corpus/decode_hello.py
+```
+
+### Visualize a slice
+
+```bash
+python examples/hello_corpus/view_slice.py
+```
+
+### File Round-Trip
+
+```bash
+echo "This is a test file for Corpus Informaticus." > examples/file_roundtrip/sample.txt
+python examples/file_roundtrip/file_to_ci3.py examples/file_roundtrip/sample.txt
+python examples/file_roundtrip/ci3_to_file.py examples/file_roundtrip/sample.txt.ci3
+```
+
+---
+
+## v0.2 Examples (Multi-Channel)
+
+```bash
+python examples/v02/encode_v02.py
+python examples/v02/decode_v02.py
+python examples/v02/view_slice.py
+```
+
+---
+
+## High-Level Roadmap
+
+### **v0.3 — Integrity Structures**
+- Use integrity channel to encode per-voxel confidence
+- Plane-based parity / anomaly detection
+- Integrity heatmap visualization
+
+### **v0.4 — Semantic Layers**
+- Use semantic + aux to label 3D regions
+- Modality zones, timestamps, sensor class mapping
+- Basis for voxel-native multi-modal fusion
+
+### **v1.0 — Stable Spec + Bindings**
+- Finalized `.ci3` file format  
+- Python package (`pip install corpus-informaticus`)  
+- Optional robotics/simulation bindings:
+  - ROS2
+  - NVIDIA Isaac Sim
+  - Unity / Omniverse
+
+---
+
+## Contributing
+
+Corpus Informaticus is **open experimental research**.  
+Issues, discussions, and contributions are welcome.
+
+---
+
+## License
+
+MIT License.
