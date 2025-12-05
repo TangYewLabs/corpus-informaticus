@@ -1,148 +1,219 @@
-# Corpus Informaticus (CI3)
-
-![Corpus Banner](docs/media/banner.png)
-
----
-
-## Overview
-
-Corpus Informaticus is a **volumetric, tensor-native data container** that stores information as a **3D voxel body** instead of a traditional linear byte stream.
-
-This early experimental release provides two reference specifications:
+# Corpus Informaticus (CIVD)
+A multi‑dimensional volumetric data container for robotics, AI, and simulation systems.
 
 ---
 
-## v0.1 — Single-Channel Corpus
+# Overview
 
-- **16 × 16 × 16 lattice** (4096 voxels)
-- **1 byte per voxel** (4096-byte capacity)
-- **Lossless round-trip** for any file ≤ 4096 bytes
-- **CRC32** integrity check over the full volume
-- Python examples:
-  - Encode & decode (“Hello Corpus”)
-  - Arbitrary file → `.ci3` → file
-  - 2D voxel slice visualization
+**Corpus Informaticus (CIVD)** is an experimental data container that stores information as a **3D voxel volume** instead of a traditional linear byte stream.
 
----
+It is designed for:
 
-## v0.2 — Anatomy v1 (Multi-Channel Voxels)
+- Robotics  
+- Simulation engines  
+- Multi‑modal AI memory  
+- Sensor fusion systems  
+- Digital twins  
+- Scientific or geometric pipelines  
 
-![CI3 Voxel Anatomy](docs/media/voxel_anatomy.png)
-
-- Same **16 × 16 × 16 geometry**
-- **4 channels per voxel**:
-  - `payload`   — primary data
-  - `integrity` — per-voxel quality (0–255)
-  - `semantic`  — semantic tag (0 = unset)
-  - `aux`       — experimental / future use
-- **CRC32** over all channels
-- Examples:
-  - Multi-channel encoding
-  - Multi-channel decoding
-  - Channel slice viewing via NumPy
-
-These channels introduce early support for **3D semantics**, **integrity layers**, and **future multimodal expansion**.
+The project explores how **3D + multi‑channel data capsules** may become a next‑generation format for machine perception and high‑integrity data transfer.
 
 ---
 
-## Philosophy
+# File Format Evolution
 
-Traditional files are linear.  
-Robotics, simulation, and AI perception are not.
+## v0.1 — Single‑Channel Corpus (Fixed Geometry)
 
-CI3 explores **data structures that match how advanced systems think**:
+- 16 × 16 × 16 grid (4096 voxels)  
+- 1 payload byte per voxel (4 KB capacity)  
+- Lossless round‑trip for any file ≤ 4096 bytes  
+- CRC32 integrity  
+- Tools:  
+  - Hello Corpus  
+  - `.ci3` roundtrip  
+  - 2D slice visualization  
 
-- Volumetric memory  
-- Spatially coherent data  
-- Multi-channel tensors  
-- Integrity gradients  
-- Semantic regions  
+Example:
 
-This is a research-driven, open, extensible format — intended to grow in public.
-
----
-
-## Getting Started
-
-### Clone the repo
-
-```bash
-git clone https://github.com/IoTIVP/corpus-informaticus.git
-cd corpus-informaticus
-pip install matplotlib numpy
 ```
-
----
-
-## v0.1 Examples
-
-### Encode a demo corpus
-
-```bash
 python examples/hello_corpus/encode_hello.py
-```
-
-### Decode it
-
-```bash
 python examples/hello_corpus/decode_hello.py
-```
-
-### Visualize a slice
-
-```bash
-python examples/hello_corpus/view_slice.py
-```
-
-### File Round-Trip
-
-```bash
-echo "This is a test file for Corpus Informaticus." > examples/file_roundtrip/sample.txt
-python examples/file_roundtrip/file_to_ci3.py examples/file_roundtrip/sample.txt
-python examples/file_roundtrip/ci3_to_file.py examples/file_roundtrip/sample.txt.ci3
+python examples/file_roundtrip/file_to_ci3.py <file>
 ```
 
 ---
 
-## v0.2 Examples (Multi-Channel)
+## v0.2 — Multi‑Channel (Anatomy v1)
 
-```bash
+- Same 16 × 16 × 16 geometry  
+- **4 channels per voxel**:
+  - `payload`
+  - `integrity`
+  - `semantic`
+  - `aux`
+- CRC32 across all channels  
+- NumPy‑based slice visualization  
+
+Example:
+
+```
 python examples/v02/encode_v02.py
-python examples/v02/decode_v02.py
 python examples/v02/view_slice.py
 ```
 
 ---
 
-## High-Level Roadmap
+# CIVD v0.3 — Dynamic Volumes (Experimental)
 
-### **v0.3 — Integrity Structures**
-- Use integrity channel to encode per-voxel confidence
-- Plane-based parity / anomaly detection
-- Integrity heatmap visualization
+CIVD v0.3 introduces the **first real breakthrough**:  
+**Arbitrary 3D volumes + configurable channel count.**
 
-### **v0.4 — Semantic Layers**
-- Use semantic + aux to label 3D regions
-- Modality zones, timestamps, sensor class mapping
-- Basis for voxel-native multi-modal fusion
+## v0.3 Features
 
-### **v1.0 — Stable Spec + Bindings**
-- Finalized `.ci3` file format  
-- Python package (`pip install corpus-informaticus`)  
-- Optional robotics/simulation bindings:
-  - ROS2
-  - NVIDIA Isaac Sim
-  - Unity / Omniverse
+- Dynamic dimensions `(X, Y, Z)`  
+- Dynamic channels `(C ≥ 1)`  
+- Backward‑compatible layout  
+- Suitable for robotics & AI tensor workflows  
+- `.civd` is the new official file extension
+
+## Where the Codec Lives
+
+```
+src/corpus_informaticus/codec_v03.py
+```
+
+## Core Usage
+
+```python
+from corpus_informaticus.codec_v03 import encode_v03, decode_v03
+
+payload_bytes = b"HELLO V03"
+blob = encode_v03(payload_bytes, dims=(32,32,32), channels=4)
+info = decode_v03(blob)
+
+print(info["payload"] == payload_bytes)  # True
+print(info["header"].dim_x, info["header"].channels)
+```
+
+Explanation:
+
+- **payload_bytes** — original 1D byte stream  
+- **dims** — volume size (X, Y, Z)  
+- **channels** — number of per‑voxel channels  
+  - e.g., 4 = payload + integrity + semantic + aux  
 
 ---
 
-## Contributing
+# CIVD v0.3 – File Roundtrip Example
 
-Corpus Informaticus is **open experimental research**.  
-Issues, discussions, and contributions are welcome.
+Encode:
+
+```
+python examples/v03/file_to_civd_v03.py examples/file_roundtrip/sample.txt
+```
+
+Decode:
+
+```
+python examples/v03/civd_to_file_v03.py examples/file_roundtrip/sample.txt.civd
+```
+
+Verify:
+
+```
+type examples/file_roundtrip/sample.txt
+type examples/file_roundtrip/sample.restored.txt
+```
+
+If both match → v0.3 roundtrip is successful.
 
 ---
 
-## License
+# Purpose of CIVD v0.3
 
-MIT License.
+CIVD v0.3 represents a shift from flat data → geometric data.
+
+A `.civd` file can hold:
+
+- Raw payload bytes (channel 0)  
+- Integrity/quality map (channel 1)  
+- Semantic tags or class labels (channel 2)  
+- Auxiliary metadata (channel 3)  
+- Additional custom channels (thermal, depth, simulation masks, etc.)
+
+This makes CIVD a **3D data capsule**, aligned with how machines sense the world.
+
+---
+
+# Specs
+
+All format specifications live under:
+
+```
+specs/
+```
+
+- `civd-v0.3-dynamic-dims.md`  
+- `civd-v0.3-encoding.md`  
+- `civd-v0.3-channel-semantics.md`
+
+These define:
+
+- Header layout  
+- Volume rules  
+- Channel semantics  
+- CRC32 model  
+- Encoding/decoding pipeline  
+
+---
+
+# Examples
+
+Everything demonstrative lives under:
+
+```
+examples/
+```
+
+Folders:
+
+- `hello_corpus/`
+- `file_roundtrip/`
+- `v02/`
+- `v03/` ← New dynamic volume examples
+
+Use these to test or build your own pipeline.
+
+---
+
+# Roadmap
+
+## v0.3 → v0.4
+- Integrity parity maps  
+- Semantic region labeling  
+- Optional compression strategies  
+
+## v0.4 → v1.0
+- Stable file spec  
+- PyPI release (`pip install corpus-informaticus`)  
+- Viewer app (slices, heatmaps, tensor views)  
+- Bindings for:
+  - ROS2  
+  - Isaac Sim  
+  - Unity / ML‑Agents  
+  - Web visualization  
+
+---
+
+# Status
+
+CIVD is experimental and evolving.  
+You are free to inspect, test, break, and expand it.
+
+Issues, ideas, and contributions are welcome.
+
+---
+
+# License
+
+MIT License — free for research, commercial, or personal use.
