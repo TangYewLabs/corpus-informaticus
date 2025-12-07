@@ -1,0 +1,12 @@
+{
+  "schema": "civd.meta.v1",
+  "created": "2025-12-07T00:00:00Z",
+  "mission": "robot_navigation_update",
+  "tags": ["nav", "map", "vision"],
+  "group": "robot_A/shift_5",
+  "requires": {
+    "robot_model": "XR-21",
+    "min_fw": "2.5.1"
+  },
+  "notes": "Example CIVD v0.5 capsule metadata for docs and tests."
+}

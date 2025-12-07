@@ -75,6 +75,26 @@ python examples/v04/unpack.py capsule.civd
 - Partial tensor reads  
 - Capsule signing  
 
+---
+
+## CIVD v0.5 — Adaptive Geometry & Capsule Metadata
+
+CIVD v0.5 is a **behavioral extension** on top of the existing v0.3/v0.4 machinery:
+
+- Geometry is chosen **automatically** based on payload size.
+- Capsules can carry a small, machine-readable JSON metadata file at `meta/civd.json`.
+- The on-disk layout (header + file table + voxel volume) stays **backward-compatible**.
+
+### Adaptive geometry (v0.5 behavior)
+
+For a payload of `N` bytes and `C` channels:
+
+```text
+voxels_needed = ceil(N / C)
+d = ceil(voxels_needed ** (1/3))
+dims = (d, d, d)
+
+
 ## 6. Installation
 ```bash
 pip install -e .
