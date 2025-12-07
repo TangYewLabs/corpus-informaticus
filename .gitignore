@@ -1,2 +1,20 @@
-﻿src/corpus_informaticus/__pycache__/
-src/corpus_informaticus.egg-info/
+﻿# CIVD capsules and temp folders
+tmp_v04_test/
+tmp_v04_test_unpacked/
+*_test.civd
+*.civd
+
+# Multi-payload example data
+examples/multi_payload/
+bundle.tar
+
+# Sample roundtrip temp outputs
+examples/file_roundtrip/*.restored
+examples/file_roundtrip/*.civd
+
+# Python cache / build junk
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
