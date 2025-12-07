@@ -18,3 +18,5 @@ __pycache__/
 *.pyo
 *.pyd
 *.egg-info/
+
+tmp_cli_out/
