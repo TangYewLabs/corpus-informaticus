@@ -1,454 +1,380 @@
-# Corpus Informaticus: CIVD — Volumetric Data Capsules for Robotics & AI
+# CIVD – Corpus Informaticus Volumetric Data
 
-[![Status: Experimental](https://img.shields.io/badge/status-experimental-blue)]()
-[![Domain: Robotics & AI](https://img.shields.io/badge/domain-robotics%20%26%20AI-brightgreen)]()
-[![Data: 3D Volumetric](https://img.shields.io/badge/data-3D%20volumetric-orange)]()
-[![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
+> A tiny research codec for **3D tensor capsules** – snapshotting multi‑channel volumes,
+> file payloads, and robotics metadata into a single `.civd` container.
 
-**Corpus Informaticus** is an experimental playground for **CIVD** — the **Corpus Informaticus Volumetric Data** format.
-
-CIVD is a family of **3D-native data capsules** designed for:
-- Robotics
-- Simulation & digital twins
-- Sensor fusion (LIDAR, RGB, depth, semantics, telemetry)
-- AI pipelines that want to read **spatial snapshots** instead of loose files
-
-The core idea:
-
-> Treat a dataset as a **single volumetric capsule** you can ship, mount, and slice —
-> not just a folder full of disconnected files.
+![CIVD Banner](docs/media/banner.png)
 
 ---
 
-## 1. Mental model — what is a CIVD capsule?
+<p align="center">
 
-A CIVD file is conceptually two things in one:
+<a href="#-roadmap--status"><img src="https://img.shields.io/badge/status-research_proto-blueviolet" alt="Status: Research Prototype"></a>
+<a href="#-features"><img src="https://img.shields.io/badge/api-python3-informational" alt="Python 3"></a>
+<a href="#-getting-started"><img src="https://img.shields.io/badge/civd-v0.3--v0.7-green" alt="CIVD versions"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License: MIT"></a>
 
-1. A **File Plane** (optional, v0.4+)  
-   - A compact file table (`CivdFileTableV04`) representing paths like `nav/map.pcd`, `vision/front.jpg`, `meta/civd.json`.
-   - Great for configuration, metadata, small assets, and mission descriptors.
-
-2. A **Volume Plane** (always present)  
-   - A dense 3D tensor: `(X, Y, Z, C)`
-   - Encoded as a continuous voxel buffer optimized for fast region-of-interest reads.
-
-Think of it as a **game cartridge for robots**:
-
-```text
-+--------------------------------------------------------+
-| CIVD Header (v0.3-compatible)                          |
-+--------------------------------------------------------+
-| Optional File Table (v0.4+)                            |
-|   - nav/map.pcd                                        |
-|   - nav/waypoints.json                                 |
-|   - vision/front.jpg                                   |
-|   - meta/civd.json   <-- v0.5 capsule metadata         |
-+--------------------------------------------------------+
-| Volumetric Payload (3D tensor snapshot)                |
-|   - dims: (X, Y, Z)                                    |
-|   - channels: C (e.g. RGB + depth + semantics + etc.)  |
-|   - layout: C- or F-contiguous                         |
-+--------------------------------------------------------+
-```
-
-You **bake** a snapshot once, and then consumers mount it and read:
-
-- **files** via the file table (e.g. `meta/civd.json`)
-- **spatial regions** via ROI reads into tensors
+</p>
 
 ---
 
-## 2. Version overview
+## Why CIVD exists
 
-CIVD evolves in **feature levels** (v0.1, v0.2, …) while keeping the **core header** stable and v0.3-compatible.
+Most data formats are either:
 
-### v0.3 — Core volumetric container
+- **File‑centric** (ZIP, TAR, HDF5, MCAP) – great for logs and events, but not native to 3D tensors.
+- **Volume‑centric** (OpenVDB, NIfTI, raw tensors) – great for 3D grids, but awkward for bundling extra files,
+  mission descriptors, or metadata.
 
-- 3D voxel volume + channels
-- Fixed geometry chosen by the user
-- Simple encode/decode of bytes → volume → bytes
-- Foundation for robotics / AI volumetric data
+**CIVD** sits in the middle:
 
-### v0.4 — File bundles inside the volume
+- Treats a **3D volume as the primary object** – a dense multi‑channel tensor.
+- Allows you to attach **files and metadata** around that volume (maps, configs, mission JSON, logs).
+- Is intentionally **small, inspectable, and experimental** – meant for robotics labs, AI research,
+  digital twins, and simulation workflows.
 
-- Adds `CivdFileTableV04`, a compact in-capsule file table
-- Supports **multi-file capsules** (e.g., map + waypoints + image)
-- Introduces **CLI v0.4** for encoding, inspecting, and extracting
-- Example: `examples/v04/preview.py`, `examples/v04/unpack.py`
-
-### v0.5 — Adaptive geometry & capsule metadata
-
-- **Adaptive geometry**: automatically chooses `(X, Y, Z)` based on payload size
-- **Capsule metadata** (`meta/civd.json`):
-  - Human + machine-readable description of what’s inside
-  - Purpose, mission tags, group, minimum firmware, etc.
-- No breaking changes: stays compatible with v0.3/v0.4 header and table
-
-### v0.6 — Region-of-Interest (ROI) & spatial snapshots
-
-- Introduces `roi_v06.py` and a **Region-of-Interest API** for dense volumes
-- Logical view: `(Z, Y, X, C)` tensor in NumPy
-- Functions like `read_region_from_bytes` and `full_volume_from_bytes` let you:
-  - Load just a cube around the robot’s current position
-  - Select only relevant channels (e.g. just semantics or velocity)
-- Tested by `tests/test_roi_v06.py`
-- Demonstrated in `examples/v06/roi_demo.py`
+Think of a CIVD file as a **3D mission cartridge**:
+a voxel grid + manifest + attachments in a single portable blob.
 
 ---
 
-## 3. Repository layout
+## High‑level architecture
 
-```text
-corpus-informaticus/
-├── specs/
-│   ├── civd-v0.4-filetable.md      # v0.4 file table spec (example name)
-│   ├── civd-v0.5-adaptive-geometry.md
-│   └── civd-v0.6-roi.md
-├── src/corpus_informaticus/
-│   ├── __init__.py
-│   ├── ci3_types.py                # core types for CIVD
-│   ├── filetable_v04.py            # CIVD v0.4 file table implementation
-│   ├── civd_v04_codec.py           # v0.4 encoder/decoder
-│   ├── civd_v05_codec.py           # v0.5 encoder/decoder (adaptive + metadata)
-│   ├── roi_v06.py                  # v0.6 ROI helpers (dense tensor view)
-│   └── cli_v04.py                  # CLI: encode / inspect / extract
-├── examples/
-│   ├── hello_corpus/               # simple hello-world
-│   ├── v03/                        # v0.3 round-trip examples
-│   ├── v04/                        # preview + unpack for multi-file capsules
-│   ├── v05/                        # v0.5 capsule with metadata
-│   └── v06/                        # v0.6 ROI demo
-├── tests/
-│   └── test_roi_v06.py             # unit tests for ROI API
-└── pyproject.toml                  # package definition
-```
+CIVD (as implemented in this repo) is evolving through small, versioned steps:
 
-(Exact filenames may evolve, but the structure is intentionally clean: **specs → src → examples → tests**.)
+- **v0.3 – Core header + dense volume**
+- **v0.4 – File table capsules (multi‑file payloads)**
+- **v0.5 – Adaptive geometry + capsule metadata**
+- **v0.6 – Region‑of‑interest (ROI) volume access**
+- **v0.7 – Tiling and scale‑out (tile packs)**
+
+The core ideas:
+
+1. A **dense multi‑channel 3D tensor** (x, y, z, C) stored as bytes.
+2. A small **header + file table** (for multi‑file capsules).
+3. Optional **capsule metadata** (JSON) describing what is inside.
+4. A set of **Python helpers** for:
+   - encoding / decoding capsules,
+   - reading arbitrary ROIs from volumes,
+   - tiling large volumes into per‑tile binaries for streaming and scale‑out.
 
 ---
 
-## 4. Installing & running locally
+## 📦 Version timeline
 
-Clone the repo:
+### v0.3 – Core dense capsule
 
-```bash
-git clone https://github.com/IoTIVP/corpus-informaticus.git
-cd corpus-informaticus
-```
+- Single payload → encoded into a 3D volume with configurable dimensions + channels.
+- Simple encode/decode round‑trip helpers.
 
-Install in editable mode:
+Key implementation:
+- `src/corpus_informaticus/codec_v03.py`
+- `examples/v03/file_to_civd_v03.py`
+- `examples/v03/civd_to_file_v03.py`
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate         # PowerShell on Windows
-pip install -e .
-```
+### v0.4 – Multi‑file capsules (file table)
 
-Confirm import:
+- Introduces a **file table** for multiple named payloads in one capsule.
+- Adds a clean separation between:
+  - **table region** (names, offsets, sizes), and
+  - **data region** (flattened byte payload).
 
-```bash
-python -c "import corpus_informaticus; print('CIVD ready')"
-```
+Key implementation:
+- `src/corpus_informaticus/filetable_v04.py`
+- `src/corpus_informaticus/civd_v04_codec.py`
+- Examples:
+  - `examples/v04/preview.py`
+  - `examples/v04/unpack.py`
 
----
-
-## 5. v0.4: Multi-file capsules via CLI
-
-v0.4 adds a file table and a CLI for encoding, inspecting, and extracting `.civd` capsules.
-
-### 5.1. Encode a folder into a v0.4 capsule
-
-Create a small test folder:
-
-```bash
-mkdir tmp_v04_test
-echo "hello from file A" > tmp_v04_test/a.txt
-echo "file B content"    > tmp_v04_test/b.txt
-echo "CIVD rocks"        > tmp_v04_test/c.txt
-```
-
-Encode using the CLI:
-
-```bash
-python -m corpus_informaticus.cli_v04 encode tmp_v04_test tmp_v04_test.civd
-```
-
-### 5.2. Inspect the capsule
+Example usage:
 
 ```bash
 python examples/v04/preview.py tmp_v04_test.civd
-```
-
-Example output:
-
-```text
-=== CIVD v0.4 Capsule Preview ===
-Path:          tmp_v04_test.civd
-Dims:          (64, 64, 32)
-Channels:      4
-Orig length:   164
-File count:    3
-Table size:    64 bytes
-Data region:   100 bytes
-Payload size:  164 bytes
-
-Files in capsule:
-- a.txt  (40 bytes)   preview: hello from file A
-- b.txt  (34 bytes)   preview: file B content
-- c.txt  (26 bytes)   preview: CIVD rocks
-```
-
-### 5.3. Unpack the capsule
-
-```bash
 python examples/v04/unpack.py tmp_v04_test.civd
 ```
 
-This writes a folder like `tmp_v04_test_unpacked/` with the decoded files.
+### v0.5 – Adaptive geometry & metadata
 
----
+CIVD v0.5 is a **behavioral** upgrade:
 
-## 6. v0.5: Adaptive geometry + capsule metadata
+- The encoder chooses a **cube volume automatically** based on payload size.
+- Each capsule can carry optional metadata at `meta/civd.json`.
 
-v0.5 moves geometry selection and metadata into the **codec behavior**, without changing the core header.
+Spec:
+- `specs/civd-v0.5-adaptive-geometry.md`
 
-### 6.1. Adaptive cubic geometry
-
-For a payload of size `N` bytes and `C` channels, v0.5 computes:
-
-```text
-voxels_needed = ceil(N / C)
-d             = ceil(voxels_needed ** (1/3))
-dims          = (d, d, d)
-```
-
-The encoder chooses a **minimal cube** that fits the payload. This is ideal for:
-
-- predictable tensor shapes
-- GPU-friendly memory layouts
-- fixed-size allocations in robotics systems
-
-### 6.2. Capsule metadata at `meta/civd.json`
-
-Capsules can carry a small JSON descriptor:
-
-```json
-{
-  "schema": "civd.meta.v1",
-  "created": "2025-12-06T22:10:05Z",
-  "mission": "robot_navigation_update",
-  "tags": ["nav", "map", "vision"],
-  "group": "robot_A/shift_5",
-  "requires": {
-    "robot_model": "XR-21",
-    "min_fw": "2.5.1"
-  }
-}
-```
-
-The JSON lives inside the file table at:
-
-```text
-meta/civd.json
-```
-
-and is completely optional. Older decoders that just see “some random JSON file” remain valid.
-
-### 6.3. v0.5 Python usage example
+Core behavior (conceptual):
 
 ```python
-from corpus_informaticus.civd_v05_codec import (
-    encode_folder_to_civd_v05,
-    decode_civd_v05,
-)
+from corpus_informaticus.civd_v05_codec import encode_folder_to_civd_v05
 
 capsule_meta = {
     "schema": "civd.meta.v1",
-    "mission": "v05_demo_navigation",
-    "tags": ["nav", "vision", "log"],
-    "group": "robot_A/test_v05",
+    "mission": "robot_navigation_update",
+    "tags": ["nav", "map", "vision"],
+    "group": "robot_A/shift_5",
     "requires": {"robot_model": "XR-21", "min_fw": "2.5.1"},
 }
 
-# Encode a folder (e.g., tmp_v04_test) into a v0.5 capsule with metadata
-blob, info = encode_folder_to_civd_v05("tmp_v04_test", capsule_meta=capsule_meta)
-print("ENC info:", info)
-
-# Decode back
-table, files, meta = decode_civd_v05(blob)
-print("DEC capsule_meta:", meta["capsule_meta"])
-
-for name, data in files.items():
-    print(name, "->", len(data), "bytes")
+blob, info = encode_folder_to_civd_v05("nav_payload_folder", capsule_meta=capsule_meta)
 ```
+
+### v0.6 – Region‑of‑interest (ROI) volume access
+
+v0.6 introduces a **logical view of dense volumes** and ROI helpers.
+
+Core concepts:
+
+- `VolumeSpecV06` – describes a dense 3D tensor:
+  - dims = (x, y, z)
+  - channels
+  - dtype (e.g. `"uint8"`, `"float32"`)
+  - memory order (`"C"`/`"F"`)
+  - signature (`"C_CONTIG"`, `"F_CONTIG"`)
+- `read_region_from_bytes(...)` – extract a `(d, h, w, C_sel)` sub‑tensor given x/y/z + w/h/d.
+- ROI helper type `RoiV06` + `clamp_roi(...)` for safe, in‑bounds region queries.
+
+Implementation:
+- `src/corpus_informaticus/roi_v06.py`
+- `examples/v06/roi_demo.py`
+- Spec: `specs/civd-v0.6-roi.md`
+
+Visualization (conceptual layout):
+
+![Voxel Anatomy](docs/media/voxel_anatomy.png)
+
+Every CIVD dense volume is treated as a **4D tensor**:
+
+```text
+(z, y, x, channels)
+```
+
+`roi_v06` provides precise, array‑friendly slices into that tensor.
+
+### v0.7 – Tiling & scale‑out
+
+v0.7 addresses **scale**: how do we handle large volumes without loading everything at once?
+
+We introduce a **tiling layer**:
+
+- Partition a dense volume into fixed‑size 3D tiles (`tile_size = (tx, ty, tz)`).
+- Store per‑tile binaries (e.g. `tile_tx1_ty2_tz3.bin`).
+- Maintain a **tiling manifest** (`tiling_manifest.json`) describing:
+  - volume dims
+  - tile size
+  - number of tiles along each axis
+- Provide helpers to:
+  - tile an in‑memory buffer,
+  - write a tile pack directory,
+  - query which tiles intersect a given ROI.
+
+Implementation:
+- `src/corpus_informaticus/tile_manifest_v07.py`
+- `src/corpus_informaticus/tile_pack_v07.py`
+- `examples/v07/tile_pack_demo.py`
+- Spec: `specs/civd-scaling-tiling-v0.7.md`
+
+Conceptual layout of a **tile pack**:
+
+```text
+tile_pack_root/
+├── tiling_manifest.json
+├── tile_tx0_ty0_tz0.bin
+├── tile_tx0_ty0_tz1.bin
+├── tile_tx0_ty1_tz0.bin
+├── tile_tx0_ty1_tz1.bin
+├── tile_tx1_ty0_tz0.bin
+├── tile_tx1_ty0_tz1.bin
+├── tile_tx1_ty1_tz0.bin
+└── tile_tx1_ty1_tz1.bin
+```
+
+The ROI + tiling story:
+
+- **v0.6** says: “Here’s how to precisely slice the volume tensor.”
+- **v0.7** says: “Here’s how to split that volume into tiles and choose which tiles matter for a given ROI.”
+
+The combination is what makes CIVD usable for **large‑scale robotics and AI** workloads.
 
 ---
 
-## 7. v0.6: ROI engine — spatial snapshots for AI & robotics
+## 🔧 Getting started
 
-v0.6 introduces an explicit **Region-of-Interest (ROI) layer**.
+### 1. Clone & install (editable)
 
-Instead of always loading the full volume, you can read just a **3D cube** and (optionally) a subset of channels.
+```bash
+git clone https://github.com/TangYewLabs/corpus-informaticus.git
+cd corpus-informaticus
 
-### 7.1. Volume specification (logical view)
+python -m venv .venv
+source .venv/bin/activate   # PowerShell: .venv\Scripts\Activate.ps1
 
-`src/corpus_informaticus/roi_v06.py` defines:
-
-```python
-from dataclasses import dataclass
-from typing import Tuple
-
-@dataclass(frozen=True)
-class VolumeSpecV06:
-    dims: Tuple[int, int, int]   # (x, y, z)
-    channels: int
-    dtype: str = "uint8"
-    order: str = "C"             # 'C' or 'F'
-    signature: str = "C_CONTIG"  # logical layout
+pip install -e .
 ```
 
-This gives a **logical view** of the volume for NumPy/tensor access.
+### 2. Run basic examples
 
-### 7.2. Core ROI API
+v0.3 round‑trip:
 
-```python
-from corpus_informaticus.roi_v06 import (
-    VolumeSpecV06,
-    read_region_from_bytes,
-    full_volume_from_bytes,
-)
-
-spec = VolumeSpecV06(dims=(64, 64, 32), channels=4, dtype="uint8")
-
-# Suppose 'volume_bytes' is a raw dense voxel buffer for that spec...
-roi = read_region_from_bytes(
-    buf=volume_bytes,
-    spec=spec,
-    x=0, y=0, z=0,          # origin of ROI
-    w=16, h=16, d=16,       # size of ROI
-    channels=[0, 1, 2],     # e.g. RGB only
-    copy=True,
-)
-
-print("ROI shape:", roi.shape)   # (d, h, w, C_sel)
+```bash
+python examples/v03/file_to_civd_v03.py
+python examples/v03/civd_to_file_v03.py
 ```
 
-And for whole-volume ingestion:
+v0.4 multi‑file capsule preview + unpack:
 
-```python
-vol = full_volume_from_bytes(volume_bytes, spec, copy=False)
-print("Volume shape:", vol.shape)  # (z, y, x, C)
+```bash
+python examples/v04/preview.py tmp_v04_test.civd
+python examples/v04/unpack.py tmp_v04_test.civd
 ```
 
-### 7.3. ROI box & utilities
+v0.5 encoding with metadata:
 
-v0.6 also defines a small ROI box helper:
-
-```python
-from dataclasses import dataclass
-from typing import Tuple
-
-@dataclass(frozen=True)
-class RoiV06:
-    x: int
-    y: int
-    z: int
-    w: int
-    h: int
-    d: int
-
-    def as_bounds(self) -> Tuple[int, int, int, int, int, int]:
-        return (
-            self.x,
-            self.x + self.w,
-            self.y,
-            self.y + self.h,
-            self.z,
-            self.z + self.d,
-        )
+```bash
+python examples/v05/encode_with_meta.py
+python examples/v05/preview_with_meta.py
 ```
 
-Helpers:
+v0.6 ROI demo (region‑of‑interest reads):
 
-- `clamp_roi(roi, dims)` — keep an ROI safely inside volume bounds
-- `roi_to_slices(roi)` — convert ROI to NumPy slices `(z_slice, y_slice, x_slice)`
-- `read_region_from_bytes_roi(...)` — ROI-based convenience wrapper
+```bash
+python examples/v06/roi_demo.py
+```
 
-Unit tests live in `tests/test_roi_v06.py` and can be run with:
+v0.7 tiling demo (tile packs + ROI‑relevant tiles):
+
+```bash
+python examples/v07/tile_pack_demo.py
+```
+
+> Note: Paths and filenames in examples are intentionally small and
+> simple. They are intended as **reference code**, not production utilities.
+
+### 3. Run tests
 
 ```bash
 python tests/test_roi_v06.py
+python tests/test_tile_pack_v07.py
 ```
 
-### 7.4. ROI demo
+These cover:
 
-A small demo is in `examples/v06/roi_demo.py`, which:
-
-- Builds a synthetic volume
-- Picks an ROI
-- Shows how ROI extraction works in practice
+- ROI math and clamping to volume bounds.
+- Tiling correctness (dimensions, tile naming, manifest fields).
+- Mapping ROIs to the correct set of tiles.
 
 ---
 
-## 8. Why CIVD instead of “just use HDF5 / MCAP / ROS bag”?
+## 🧠 How to think about CIVD in your stack
 
-CIVD does **not** try to replace mature containers everywhere. Instead, it explores a niche:
+CIVD is:
 
-- **Single-shot spatial snapshots** for robots and AI systems
-- **3D-native layout** with a volume as the first-class citizen
-- **Multi-channel voxels** (RGB + depth + semantics + flow + whatever you want)
-- A small, readable spec you can understand in an afternoon
+- A **research‑grade container** for:
+  - robot mission snapshots,
+  - multi‑sensor 3D fields,
+  - digital twin states,
+  - simulation assets + configs.
+- A way to unify:
+  - **structured tensors** (the volume),
+  - **unstructured files** (logs, configs, models),
+  - **explicit metadata** (`meta/civd.json`).
 
-Where CIVD aims to shine:
+Notably, CIVD is **not**:
 
-- **Robotics mission packs** — “Here is the environment, map, and mission in one file.”
-- **Simulation / digital twin frames** — “Here is a snapshot of the world at T = 42.0s.”
-- **AI training capsules** — “Here is a volumetric training example with all modalities aligned.”
+- A general‑purpose filesystem.
+- A streaming event log.
+- A compression library.
 
-CIVD is experimental by design. It should coexist with, not replace, things like ROS bags, HDF5, or MCAP.
+Instead, treat a `.civd` file as a **baked snapshot**:
 
----
+1. Gather the files + tensors you care about.
+2. Encode once into a CIVD capsule or tile pack.
+3. Deploy it as a read‑mostly artifact to robots, simulators, or AI systems.
 
-## 9. Roadmap (high-level)
-
-These are **exploratory directions**, not promises:
-
-- **v0.7+ compression profiles**  
-  - Block compression for sparse or mostly-empty volumes  
-  - Optional GPU-accelerated compression/decompression
-
-- **Streaming / chunked CIVD**  
-  - Append-only or streamable variants for real-time sensors
-
-- **Physics-aware & semantics-aware channels**  
-  - Standard channel layouts for common robotics stacks  
-  - Integration patterns for ROS / Isaac / PX4 / industrial systems
-
-- **Crypto-sealed capsules (CIVD-Secure — future)**  
-  - For environments that require tamper-evidence or attestation  
-  - Would be layered on top of the foundational format, not baked in
+This avoids the complexity of live mutation and focuses on **fast, predictable reads**.
 
 ---
 
-## 10. Status
+## 🔭 Roadmap toward v1.0 (high‑level)
+
+The current line (v0.3–v0.7) establishes:
+
+- Header + dense volume (v0.3).
+- File‑table capsules (v0.4).
+- Adaptive geometry / metadata (v0.5).
+- ROI access (v0.6).
+- Tiling & scaling (v0.7).
+
+Candidate directions as we move toward v1.0:
+
+1. **Compression‑aware volumes**
+   - Pluggable compression (e.g. Zstd/LZ4) per capsule or per tile.
+   - Metadata to describe compression choices.
+
+2. **Multi‑capsule mission packs**
+   - Simple manifests for sets of CIVD files per mission / scene.
+
+3. **GPU‑friendly interop**
+   - Clear mapping to CUDA / PyTorch / JAX tensors.
+   - Zero‑copy slicing for compatible layouts.
+
+4. **Production‑grade reference readers**
+   - C++ / Rust implementations for embedded and robotics stacks.
+
+Security, cryptographic sealing, and deep enterprise hardening are explicitly **out of scope for this repo**.
+Those belong in higher‑level systems that adopt CIVD as one of their internal container formats.
+
+---
+
+## 📁 Repository layout (abridged)
+
+```text
+src/corpus_informaticus/
+    __init__.py
+    codec_v03.py            # v0.3 single‑payload codec
+    filetable_v04.py        # v0.4 file table
+    civd_v04_codec.py       # v0.4 multi‑file capsules
+    civd_v05_codec.py       # v0.5 adaptive geometry + metadata
+    roi_v06.py              # v0.6 volume + ROI helpers
+    tile_manifest_v07.py    # v0.7 tiling metadata
+    tile_pack_v07.py        # v0.7 tiling engine
+
+examples/
+    v03/                    # v0.3 round‑trip examples
+    v04/                    # v0.4 preview/unpack examples
+    v05/                    # v0.5 metadata examples
+    v06/                    # v0.6 ROI demo
+    v07/                    # v0.7 tiling demo
+
+specs/
+    civd-v0.5-adaptive-geometry.md
+    civd-v0.6-roi.md
+    civd-scaling-tiling-v0.7.md
+
+tests/
+    test_roi_v06.py
+    test_tile_pack_v07.py
+
+docs/media/
+    banner.png
+    voxel_anatomy.png
+```
+
+---
+
+## ⚠️ Disclaimer
 
 This repository is:
 
-- **Work-in-progress** and experimental  
-- Focused on **clarity, composability, and future-proof building blocks**  
-- Open to feedback from the robotics, simulation, and AI communities
+- Experimental
+- Evolving
+- Not yet optimized or hardened for production environments
 
-The path so far:
+Use it as a **playground and reference implementation** for:
 
-- v0.3 — core volumetric container
-- v0.4 — file table & CLI
-- v0.5 — adaptive geometry & capsule metadata
-- v0.6 — ROI / spatial snapshot API
+- 3D tensor capsules
+- spatial snapshots
+- tiling strategies for large volumetric data
 
-If you work on robotics, digital twins, or AI systems that care about **where** data is in space, CIVD is a place to experiment with new kinds of volumetric containers.
-
----
-
-**License:** MIT  
-**Author / Maintainer:** IoTIVP (and collaborators)  
-**Project:** Corpus Informaticus — experiments in volumetric data for intelligent systems.
+Contributions, feedback, and critique from robotics, simulation,
+and AI infrastructure engineers are very welcome.
