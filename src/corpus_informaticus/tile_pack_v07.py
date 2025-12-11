@@ -1,35 +1,29 @@
 """
 tile_pack_v07.py — CIVD v0.7 tiling helpers.
 
-This module is intentionally minimal and focused on *in-memory tiling*
-of a dense CIVD v0.6 volume into per-tile binary chunks on disk.
+This module implements:
+- A small tiling spec (TilingSpecV07)
+- Stable tile naming (tile_txX_tyY_tzZ.bin)
+- Conversion of a dense v0.6 volume buffer into per-tile binaries
+- Writing a "tile pack" folder with a JSON manifest
+- Loading the manifest back as a TilingSpecV07
+- Querying which tiles intersect a given RoiV06
 
-It does NOT know about the on-disk .civd container layout — it only
-operates on:
-
-  - a dense buffer (bytes) representing the volume
-  - a VolumeSpecV06 that describes that buffer logically
-  - a tile size (tx, ty, tz)
-
-v0.7 introduces:
-
-  - a simple tiling spec (TileGridSpecV07)
-  - a stable tile filename convention
-  - a JSON manifest for reconstruction
-  - a helper to answer: “which tiles intersect this ROI?”
+It is intentionally independent from the on-disk CIVD layout:
+it works over a decoded dense buffer + VolumeSpecV06.
 """
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from math import ceil
-from pathlib import Path
+import json
+import math
+import os
 from typing import Dict, Iterable, List, Tuple
 
 import numpy as np
 
-from .roi_v06 import VolumeSpecV06, RoiV06, clamp_roi, full_volume_from_bytes
+from .roi_v06 import VolumeSpecV06, RoiV06
 from .tile_manifest_v07 import TileIndexV07
 
 # ---------------------------------------------------------------------------
@@ -37,52 +31,40 @@ from .tile_manifest_v07 import TileIndexV07
 # ---------------------------------------------------------------------------
 
 TILE_MANIFEST_FILENAME = "tiling_manifest.json"
+TILE_MANIFEST_VERSION = "civd.tilepack.v0.7"
 
 
 # ---------------------------------------------------------------------------
-# Runtime tiling spec (v0.7)
+# Data classes
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class TileGridSpecV07:
+class TilingSpecV07:
     """
-    Runtime description of a v0.7 tile grid.
+    Logical description of how a dense volume was tiled.
 
     volume_dims:
-        (x, y, z) voxel dimensions of the *global* volume.
+        (x, y, z) voxel dimensions of the original dense volume.
     tile_size:
-        (tx, ty, tz) tile size in voxels.
+        (tile_x, tile_y, tile_z) tile side lengths in voxels.
     tiles_per_axis:
-        (nx, ny, nz) number of tiles along each axis.
-    channels:
-        Number of channels per voxel.
-    dtype:
-        NumPy dtype name, e.g. 'uint8', 'float32'.
-    order:
-        Memory layout order ('C' or 'F') used by the dense buffer.
-    signature:
-        Logical layout signature (e.g., 'C_CONTIG'). For v0.7 we
-        assume C_CONTIG/F_CONTIG matching VolumeSpecV06.
+        (tiles_x, tiles_y, tiles_z) counts along each axis.
     """
 
     volume_dims: Tuple[int, int, int]
     tile_size: Tuple[int, int, int]
     tiles_per_axis: Tuple[int, int, int]
-    channels: int
-    dtype: str
-    order: str
-    signature: str
 
 
 # ---------------------------------------------------------------------------
-# Tile filename helpers
+# Tile naming helpers
 # ---------------------------------------------------------------------------
 
 
 def tile_index_to_name(idx: TileIndexV07) -> str:
     """
-    Stable filename convention for a tile index.
+    Convert a TileIndexV07 to a stable filename.
 
     Example:
         TileIndexV07(tx=1, ty=2, tz=3)
@@ -95,270 +77,300 @@ def name_to_tile_index(name: str) -> TileIndexV07:
     """
     Parse a tile filename back into a TileIndexV07.
 
-    We are intentionally strict: the expected pattern is
-        "tile_tx{tx}_ty{ty}_tz{tz}.bin"
+    Accepts names of the form:
+        "tile_txX_tyY_tzZ.bin"
     """
-    base = name
-    if base.endswith(".bin"):
-        base = base[:-4]
+    base = os.path.basename(name)
+    if not base.startswith("tile_tx") or not base.endswith(".bin"):
+        raise ValueError(f"Not a valid tile filename: {name!r}")
 
-    if not base.startswith("tile_tx"):
-        raise ValueError(f"Invalid tile name {name!r}: missing 'tile_tx' prefix")
+    core = base[:-4]  # drop ".bin"
+    parts = core.split("_")
+    # Expect ["tile", "txX", "tyY", "tzZ"]
+    if len(parts) != 4:
+        raise ValueError(f"Unexpected tile name structure: {name!r}")
 
     try:
-        # base is "tile_tx{tx}_ty{ty}_tz{tz}"
-        parts = base.split("_")
-        # ["tile", "tx{tx}", "ty{ty}", "tz{tz}"]
-        if len(parts) != 4:
-            raise ValueError(f"Unexpected tile name structure: {name!r}")
-
-        tx = int(parts[1][2:])  # strip "tx"
-        ty = int(parts[2][2:])  # strip "ty"
-        tz = int(parts[3][2:])  # strip "tz"
+        tx = int(parts[1][2:])
+        ty = int(parts[2][2:])
+        tz = int(parts[3][2:])
     except Exception as exc:
-        raise ValueError(f"Could not parse tile index from name {name!r}") from exc
+        raise ValueError(f"Failed to parse tile indices from: {name!r}") from exc
 
     return TileIndexV07(tx=tx, ty=ty, tz=tz)
 
 
 # ---------------------------------------------------------------------------
-# Core tiler: dense volume -> tiles (in memory)
+# Internal helpers
 # ---------------------------------------------------------------------------
 
 
 def _compute_tiles_per_axis(
-    dims: Tuple[int, int, int], tile_size: Tuple[int, int, int]
+    volume_dims: Tuple[int, int, int],
+    tile_size: Tuple[int, int, int],
 ) -> Tuple[int, int, int]:
-    x, y, z = dims
+    """
+    Given volume dims (X, Y, Z) and tile_size (Tx, Ty, Tz),
+    compute how many tiles we need along each axis, using ceil division.
+    """
+    x, y, z = volume_dims
     tx, ty, tz = tile_size
-    if tx <= 0 or ty <= 0 or tz <= 0:
-        raise ValueError(f"tile_size must be positive in all dims, got {tile_size!r}")
 
-    nx = ceil(x / tx)
-    ny = ceil(y / ty)
-    nz = ceil(z / tz)
-    return nx, ny, nz
+    if tx <= 0 or ty <= 0 or tz <= 0:
+        raise ValueError(f"Tile size must be > 0, got {tile_size}")
+
+    tiles_x = math.ceil(x / tx)
+    tiles_y = math.ceil(y / ty)
+    tiles_z = math.ceil(z / tz)
+
+    return tiles_x, tiles_y, tiles_z
+
+
+def _full_volume_view(
+    buf: bytes,
+    spec: VolumeSpecV06,
+) -> np.ndarray:
+    """
+    Return a NumPy view over the full volume with shape (z, y, x, C).
+
+    We re-implement the same logic as roi_v06._volume_view_from_bytes
+    so tile_pack_v07 stays decoupled from any private helpers.
+    """
+    expected = spec.expected_nbytes()
+    if len(buf) != expected:
+        raise ValueError(
+            f"Buffer size {len(buf)} does not match expected {expected} "
+            f"for dims={spec.dims}, channels={spec.channels}, dtype={spec.dtype}"
+        )
+
+    dtype = np.dtype(spec.dtype)
+    x, y, z = spec.dims
+    total_voxels = x * y * z
+
+    arr = np.frombuffer(buf, dtype=dtype)
+    if arr.size != total_voxels * spec.channels:
+        raise ValueError(
+            f"Buffer length {arr.size} elements does not match "
+            f"voxels*channels = {total_voxels * spec.channels}"
+        )
+
+    if spec.order not in ("C", "F"):
+        raise ValueError(f"Unsupported order: {spec.order!r}. Use 'C' or 'F'.")
+
+    vol = arr.reshape((z, y, x, spec.channels), order=spec.order)
+    return vol
+
+
+# ---------------------------------------------------------------------------
+# Tiling core
+# ---------------------------------------------------------------------------
 
 
 def tile_volume_buffer(
     buf: bytes,
     spec: VolumeSpecV06,
     tile_size: Tuple[int, int, int],
-) -> Tuple[TileGridSpecV07, Dict[TileIndexV07, bytes], Dict]:
+) -> Tuple[TilingSpecV07, Dict[TileIndexV07, bytes]]:
     """
-    Split a dense CIVD v0.6 volume into a grid of tiles.
+    Slice a dense volume buffer into per-tile binary blobs.
 
     Parameters
     ----------
     buf:
-        Raw bytes of the dense volume (z, y, x, C) as described by 'spec'.
+        Raw bytes containing a dense volume in the layout described by 'spec'.
     spec:
         VolumeSpecV06 describing dims, channels, dtype, order, signature.
+        For v0.7 we assume a standard dense tensor with signature
+        'C_CONTIG' or 'F_CONTIG' (checked by roi_v06).
     tile_size:
-        (tx, ty, tz) tile size in voxels along x, y, z.
+        (tile_x, tile_y, tile_z) tile dimensions in voxels.
 
     Returns
     -------
-    (tiling_spec, tiles_dict, manifest_dict)
-        tiling_spec:
-            A TileGridSpecV07 describing the tiling layout.
-        tiles_dict:
-            Mapping TileIndexV07 -> tile bytes.
-        manifest_dict:
-            JSON-serializable dict for 'tiling_manifest.json'.
+    (tiling_spec, tiles)
+        tiling_spec:  TilingSpecV07 describing the tiling layout.
+        tiles:        dict[TileIndexV07, bytes] of per-tile buffers.
     """
-    # Interpret the buffer as a 4D tensor (z, y, x, C)
-    vol = full_volume_from_bytes(buf, spec, copy=False)
     x_max, y_max, z_max = spec.dims
     tx, ty, tz = tile_size
 
-    nx, ny, nz = _compute_tiles_per_axis(spec.dims, tile_size)
+    tiles_per_axis = _compute_tiles_per_axis(spec.dims, tile_size)
+    tiles_x, tiles_y, tiles_z = tiles_per_axis
 
-    tiling_spec = TileGridSpecV07(
+    tiling_spec = TilingSpecV07(
         volume_dims=spec.dims,
         tile_size=tile_size,
-        tiles_per_axis=(nx, ny, nz),
-        channels=spec.channels,
-        dtype=spec.dtype,
-        order=spec.order,
-        signature=spec.signature,
+        tiles_per_axis=tiles_per_axis,
     )
 
+    vol = _full_volume_view(buf, spec)  # (z, y, x, C)
+
     tiles: Dict[TileIndexV07, bytes] = {}
-    tiles_meta: List[Dict] = []
 
-    for tz_idx in range(nz):
-        for ty_idx in range(ny):
-            for tx_idx in range(nx):
-                # Global voxel bounds of this tile
+    for tz_idx in range(tiles_z):
+        z0 = tz_idx * tz
+        z1 = min(z0 + tz, z_max)
+        if z0 >= z1:
+            continue
+
+        for ty_idx in range(tiles_y):
+            y0 = ty_idx * ty
+            y1 = min(y0 + ty, y_max)
+            if y0 >= y1:
+                continue
+
+            for tx_idx in range(tiles_x):
                 x0 = tx_idx * tx
-                y0 = ty_idx * ty
-                z0 = tz_idx * tz
-
-                if x0 >= x_max or y0 >= y_max or z0 >= z_max:
-                    continue  # completely outside
-
                 x1 = min(x0 + tx, x_max)
-                y1 = min(y0 + ty, y_max)
-                z1 = min(z0 + tz, z_max)
+                if x0 >= x1:
+                    continue
 
-                if x1 <= x0 or y1 <= y0 or z1 <= z0:
-                    continue  # degenerate tile
-
-                # vol shape is (z, y, x, C)
                 tile_arr = vol[z0:z1, y0:y1, x0:x1, :]
-                tile_bytes = tile_arr.tobytes()
+                tile_buf = tile_arr.tobytes()
 
                 idx = TileIndexV07(tx=tx_idx, ty=ty_idx, tz=tz_idx)
-                tiles[idx] = tile_bytes
+                tiles[idx] = tile_buf
 
-                tiles_meta.append(
-                    {
-                        "tx": tx_idx,
-                        "ty": ty_idx,
-                        "tz": tz_idx,
-                        "x0": x0,
-                        "y0": y0,
-                        "z0": z0,
-                        "x1": x1,
-                        "y1": y1,
-                        "z1": z1,
-                        "nbytes": len(tile_bytes),
-                    }
-                )
-
-    manifest = {
-        "version": "v0.7",
-        "volume_dims": list(spec.dims),
-        "tile_size": list(tile_size),
-        "tiles_per_axis": [nx, ny, nz],
-        "channels": spec.channels,
-        "dtype": spec.dtype,
-        "order": spec.order,
-        "signature": spec.signature,
-        "tiles": tiles_meta,
-    }
-
-    return tiling_spec, tiles, manifest
+    return tiling_spec, tiles
 
 
 # ---------------------------------------------------------------------------
-# Save / load tile packs
+# Pack / manifest helpers
 # ---------------------------------------------------------------------------
 
 
-def save_tile_pack_to_folder(
-    root: Path | str,
-    tiling_spec: TileGridSpecV07,
+def write_tile_pack(
+    out_dir: str,
+    tiling_spec: TilingSpecV07,
     tiles: Dict[TileIndexV07, bytes],
-    manifest: Dict,
 ) -> None:
     """
-    Write tiles + manifest to a folder.
+    Write a "tile pack" directory:
 
-    Layout:
-        root/
-          tiling_manifest.json
-          tile_tx{tx}_ty{ty}_tz{tz}.bin
-          ...
+        out_dir/
+          ├── tiling_manifest.json
+          ├── tile_tx0_ty0_tz0.bin
+          ├── tile_tx0_ty0_tz1.bin
+          └── ...
+
+    The manifest contains a machine-readable description of the tiling.
     """
-    root_path = Path(root)
-    root_path.mkdir(parents=True, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
 
-    # Write manifest
-    manifest_path = root_path / TILE_MANIFEST_FILENAME
-    with manifest_path.open("w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=2, sort_keys=True)
+    manifest_tiles = []
 
-    # Write each tile
-    for idx, data in tiles.items():
-        name = tile_index_to_name(idx)
-        tile_path = root_path / name
-        with tile_path.open("wb") as f:
-            f.write(data)
+    for idx, buf in tiles.items():
+        filename = tile_index_to_name(idx)
+        path = os.path.join(out_dir, filename)
+        with open(path, "wb") as f:
+            f.write(buf)
 
-
-def _tiles_for_clamped_roi(
-    roi: RoiV06,
-    volume_dims: Tuple[int, int, int],
-    tile_size: Tuple[int, int, int],
-    tiles_per_axis: Tuple[int, int, int],
-) -> Iterable[TileIndexV07]:
-    """
-    Compute the set of tile indices that intersect a clamped ROI.
-
-    Assumes:
-      - roi is already clamped to [0, volume_dims)
-      - roi.w/h/d may be zero (empty)
-    """
-    if roi.w <= 0 or roi.h <= 0 or roi.d <= 0:
-        return []
-
-    x0, y0, z0 = roi.x, roi.y, roi.z
-    x1 = roi.x + roi.w
-    y1 = roi.y + roi.h
-    z1 = roi.z + roi.d
-
-    tx, ty, tz = tile_size
-    nx, ny, nz = tiles_per_axis
-
-    # Map voxel coordinates to tile indices (inclusive ranges)
-    tx_min = max(0, x0 // tx)
-    ty_min = max(0, y0 // ty)
-    tz_min = max(0, z0 // tz)
-
-    tx_max = min(nx - 1, (x1 - 1) // tx)
-    ty_max = min(ny - 1, (y1 - 1) // ty)
-    tz_max = min(nz - 1, (z1 - 1) // tz)
-
-    if tx_min > tx_max or ty_min > ty_max or tz_min > tz_max:
-        return []
-
-    for tz_idx in range(tz_min, tz_max + 1):
-        for ty_idx in range(ty_min, ty_max + 1):
-            for tx_idx in range(tx_min, tx_max + 1):
-                yield TileIndexV07(tx=tx_idx, ty=ty_idx, tz=tz_idx)
-
-
-def load_tile_bytes_for_roi(
-    roi: RoiV06,
-    root: Path | str,
-) -> Dict[TileIndexV07, bytes]:
-    """
-    Given a global ROI and a tile pack folder, return the tile bytes
-    for all tiles that intersect that ROI.
-
-    This does NOT reconstruct the final ROI tensor — it only answers:
-    “which tiles matter, and what are their raw bytes?”.
-    """
-    root_path = Path(root)
-    manifest_path = root_path / TILE_MANIFEST_FILENAME
-    if not manifest_path.exists():
-        raise FileNotFoundError(
-            f"Tile manifest not found at {manifest_path}. "
-            "Did you call save_tile_pack_to_folder()?"
+        manifest_tiles.append(
+            {
+                "tx": idx.tx,
+                "ty": idx.ty,
+                "tz": idx.tz,
+                "filename": filename,
+                "nbytes": len(buf),
+            }
         )
 
-    with manifest_path.open("r", encoding="utf-8") as f:
-        manifest = json.load(f)
+    manifest = {
+        "version": TILE_MANIFEST_VERSION,
+        "volume_dims": list(tiling_spec.volume_dims),
+        "tile_size": list(tiling_spec.tile_size),
+        "tiles_per_axis": list(tiling_spec.tiles_per_axis),
+        "tiles": manifest_tiles,
+    }
 
-    volume_dims = tuple(manifest["volume_dims"])
-    tile_size = tuple(manifest["tile_size"])
-    tiles_per_axis = tuple(manifest["tiles_per_axis"])
+    manifest_path = os.path.join(out_dir, TILE_MANIFEST_FILENAME)
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, sort_keys=True)
 
-    # Clamp ROI to volume bounds
-    clamped = clamp_roi(roi, volume_dims)  # type: ignore[arg-type]
-    if clamped.w <= 0 or clamped.h <= 0 or clamped.d <= 0:
-        return {}
 
-    result: Dict[TileIndexV07, bytes] = {}
-    for idx in _tiles_for_clamped_roi(clamped, volume_dims, tile_size, tiles_per_axis):
-        name = tile_index_to_name(idx)
-        tile_path = root_path / name
-        if not tile_path.exists():
-            # It is possible that some tiles were skipped in tiling.
+def load_tile_manifest(out_dir: str) -> TilingSpecV07:
+    """
+    Load a TilingSpecV07 from a tile pack directory.
+
+    This reads only the global tiling parameters. Per-tile entries are
+    available in the JSON if a consumer wants to inspect them.
+    """
+    manifest_path = os.path.join(out_dir, TILE_MANIFEST_FILENAME)
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    volume_dims = tuple(data["volume_dims"])
+    tile_size = tuple(data["tile_size"])
+    tiles_per_axis = tuple(data["tiles_per_axis"])
+
+    return TilingSpecV07(
+        volume_dims=volume_dims,  # type: ignore[arg-type]
+        tile_size=tile_size,      # type: ignore[arg-type]
+        tiles_per_axis=tiles_per_axis,  # type: ignore[arg-type]
+    )
+
+
+# ---------------------------------------------------------------------------
+# ROI → tile selection
+# ---------------------------------------------------------------------------
+
+
+def query_tiles_for_roi(
+    tiling_spec: TilingSpecV07,
+    roi: RoiV06,
+) -> List[TileIndexV07]:
+    """
+    Given a tiling spec and an ROI in voxel space, return the list of
+    TileIndexV07 that intersect that ROI.
+
+    This is used for:
+    - Robotics: "Which tiles do I need for this field-of-view?"
+    - Cloud / streaming: "Which tiles should I fetch for this request?"
+    """
+    x_max, y_max, z_max = tiling_spec.volume_dims
+    tx_size, ty_size, tz_size = tiling_spec.tile_size
+    tiles_x, tiles_y, tiles_z = tiling_spec.tiles_per_axis
+
+    # ROI bounds in voxel coords
+    x0_roi = roi.x
+    y0_roi = roi.y
+    z0_roi = roi.z
+    x1_roi = roi.x + roi.w
+    y1_roi = roi.y + roi.h
+    z1_roi = roi.z + roi.d
+
+    selected: List[TileIndexV07] = []
+
+    for tz_idx in range(tiles_z):
+        z0 = tz_idx * tz_size
+        z1 = min(z0 + tz_size, z_max)
+        if z1 <= z0:
             continue
-        with tile_path.open("rb") as f:
-            result[idx] = f.read()
 
-    return result
+        # Z overlap?
+        if not (z0 < z1_roi and z1 > z0_roi):
+            continue
+
+        for ty_idx in range(tiles_y):
+            y0 = ty_idx * ty_size
+            y1 = min(y0 + ty_size, y_max)
+            if y1 <= y0:
+                continue
+
+            # Y overlap?
+            if not (y0 < y1_roi and y1 > y0_roi):
+                continue
+
+            for tx_idx in range(tiles_x):
+                x0 = tx_idx * tx_size
+                x1 = min(x0 + tx_size, x_max)
+                if x1 <= x0:
+                    continue
+
+                # X overlap?
+                if not (x0 < x1_roi and x1 > x0_roi):
+                    continue
+
+                selected.append(TileIndexV07(tx=tx_idx, ty=ty_idx, tz=tz_idx))
+
+    return selected
