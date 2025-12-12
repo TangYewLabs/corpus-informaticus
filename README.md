@@ -3,7 +3,9 @@
 > A tiny research codec for **3D tensor capsules** – snapshotting multi‑channel volumes,
 > file payloads, and robotics metadata into a single `.civd` container.
 
-![CIVD Banner](docs/media/banner.png)
+<p align="center">
+  <img src="docs/media/civd_snapshot_tiling.png" width="90%">
+</p>
 
 ---
 
