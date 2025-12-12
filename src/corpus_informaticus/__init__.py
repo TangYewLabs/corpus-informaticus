@@ -59,6 +59,19 @@ __all__ = [
     "read_snapshot_v07",
     "full_volume_from_snapshot_v07",
     "read_roi_from_snapshot_v07",
+
+    # v0.8 tile headers + tiling
+    "TileHeaderV08",
+    "try_parse_tile_header_v08",
+    "TilingSpecV08",
+    "tile_volume_buffer_v08",
+    "write_tile_pack_v08",
+    "read_tile_file_payload_auto",
+
+    # v0.8 snapshot
+    "write_snapshot_v08",
+    "read_snapshot_v08",
+    "read_roi_from_snapshot_v08",
 ]
 
 # ---------------------------------------------------------------------------
@@ -142,6 +155,39 @@ try:
         read_snapshot_v07,
         full_volume_from_snapshot_v07,
         read_roi_from_snapshot_v07,
+    )
+except Exception:  # pragma: no cover
+    pass
+
+# ---------------------------------------------------------------------------
+# CIVD v0.8 – tile headers + tiling
+# ---------------------------------------------------------------------------
+
+try:
+    from .tile_header_v08 import (
+        TileHeaderV08,
+        try_parse_tile_header_v08,
+    )
+
+    from .tile_pack_v08 import (
+        TilingSpecV08,
+        tile_volume_buffer_v08,
+        write_tile_pack_v08,
+        read_tile_file_payload_auto,
+    )
+except Exception:  # pragma: no cover
+    pass
+
+
+# ---------------------------------------------------------------------------
+# CIVD v0.8 – snapshot container
+# ---------------------------------------------------------------------------
+
+try:
+    from .snapshot_v08 import (
+        write_snapshot_v08,
+        read_snapshot_v08,
+        read_roi_from_snapshot_v08,
     )
 except Exception:  # pragma: no cover
     pass
