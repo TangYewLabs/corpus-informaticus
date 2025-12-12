@@ -143,7 +143,14 @@ Implementation:
 
 Visualization (conceptual layout):
 
-![Voxel Anatomy](docs/media/voxel_anatomy.png)
+### CIVD Voxel Anatomy
+
+<p align="center">
+  <img src="docs/media/civd_voxel_anatomy.png" width="60%">
+</p>
+
+Each CIVD voxel represents a spatial cell with a multi-channel payload,
+enabling dense, machine-native volumetric intelligence.
 
 Every CIVD dense volume is treated as a **4D tensor**:
 
