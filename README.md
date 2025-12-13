@@ -49,6 +49,7 @@ CIVD (as implemented in this repo) is evolving through small, versioned steps:
 - **v0.5 – Adaptive geometry + capsule metadata**
 - **v0.6 – Region‑of‑interest (ROI) volume access**
 - **v0.7 – Tiling and scale‑out (tile packs)**
+- **v0.8 – Tile block headers + schema/versioned snapshots (streaming-ready)**
 
 The core ideas:
 
