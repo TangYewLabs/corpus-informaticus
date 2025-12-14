@@ -15,7 +15,7 @@ from corpus_informaticus.ci3_visualizer import show_ci3_slice
 def main() -> None:
     ci3_path = os.path.join(CURRENT_DIR, "hello.ci3")
     if not os.path.exists(ci3_path):
-        print(f"CI3 file not found: {ci3_path}")
+        print(f"Legacy CI3 file not found: {ci3_path}")
         print("Run encode_hello.py first.")
         return
 

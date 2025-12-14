@@ -19,11 +19,11 @@ def main() -> None:
 
     ci3_path = os.path.abspath(sys.argv[1])
     if not os.path.exists(ci3_path):
-        print(f"CI3 file not found: {ci3_path}")
+        print(f"Legacy CI3 file not found: {ci3_path}")
         sys.exit(1)
 
     data, header = decode_ci3_file(ci3_path)
-    print(f"Decoded CI3 corpus:")
+    print(f"Decoded legacy CI3 corpus:")
     print(f"  Path: {ci3_path}")
     print(f"  orig_length: {header.orig_length} bytes")
 
