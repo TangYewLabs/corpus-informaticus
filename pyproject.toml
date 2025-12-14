@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "corpus-informaticus"
 version = "0.0.1"
-description = "3D voxel-based data container format (CI3)"
+description = "Volumetric data capsules and tools for AI, robotics, and spatial systems (CIVD)"
 readme = "README.md"
 requires-python = ">=3.10"
 

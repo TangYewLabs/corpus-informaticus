@@ -21,7 +21,7 @@ def main() -> None:
         return
 
     data, header = decode_ci3_file(ci3_path)
-    print(f"Decoded corpus from: {ci3_path}")
+    print(f"Decoded legacy CI3 corpus from: {ci3_path}")
     print(f"orig_length: {header.orig_length}")
     print("Recovered message:", data.decode("utf-8", errors="replace"))
 
