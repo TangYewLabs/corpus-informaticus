@@ -388,3 +388,6 @@ Use it as a **playground and reference implementation** for:
 
 Contributions, feedback, and critique from robotics, simulation,
 and AI infrastructure engineers are very welcome.
+
+## License
+MIT
