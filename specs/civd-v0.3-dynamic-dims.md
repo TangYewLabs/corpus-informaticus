@@ -1,9 +1,8 @@
 # CIVD v0.3 — Dynamic Dimensions and Channels
 
-> Legacy note: \*\*CI3\*\* is an early precursor format retained for backward compatibility and historical reference.
+> Legacy note: **CI3** is an early precursor format retained for backward compatibility and historical reference.
 
-> \*\*CIVD\*\* is the active format family going forward.
-
+> **CIVD** is the active format family going forward.
 
 
 This document defines CIVD v0.3, which extends the original fixed-geometry corpus into a **dynamic volumetric container** with configurable dimensions and channel count.
@@ -59,7 +58,6 @@ The payload volume is stored as:
 \[channel]\[z]\[y]\[x]
 
 
-
 This is channel-major, making it compatible with:
 
 PyTorch
@@ -79,7 +77,6 @@ Because robotics and vision pipelines expect:
 C × D × H × W
 
 
-
 And CIVD is designed to be “AI-native, robotics-native, tensor-native.”
 
 3. Capacity Rules
@@ -87,7 +84,6 @@ And CIVD is designed to be “AI-native, robotics-native, tensor-native.”
 The maximum payload is:
 
 capacity = X \* Y \* Z \* Channels
-
 
 
 Examples:
