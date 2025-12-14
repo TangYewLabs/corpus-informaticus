@@ -176,3 +176,26 @@ def read_tile_file_payload_auto(path: str) -> Tuple[Optional[TileHeaderV08], byt
     if len(payload) != hdr.payload_nbytes:
         raise ValueError("Tile payload size mismatch vs header")
     return hdr, payload
+
+def read_tile_v08(out_dir: str, idx: "TileIndexV07"):
+    """
+    Read a single v0.8 tile file and return (header, payload_bytes).
+
+    This is a small public wrapper so demos and downstream code can call a
+    consistent name without knowing internal helper function names.
+    """
+    import os
+
+    # Reuse the v0.7 naming convention: tile_tx{tx}_ty{ty}_tz{tz}.bin
+    fname = tile_index_to_name(idx)
+    path = os.path.join(out_dir, fname)
+
+    with open(path, "rb") as f:
+        raw = f.read()
+
+    header = try_parse_tile_header_v08(raw)
+    if header is None:
+        raise ValueError(f"File does not appear to contain a v0.8 tile header: {path}")
+
+    payload = read_tile_file_payload_auto(path)
+    return header, payload
