@@ -1,13 +1,19 @@
 # CIVD v0.3 — Dynamic Dimensions and Channels
 
+> Legacy note: \*\*CI3\*\* is an early precursor format retained for backward compatibility and historical reference.
+
+> \*\*CIVD\*\* is the active format family going forward.
+
+
+
 This document defines CIVD v0.3, which extends the original fixed-geometry corpus into a **dynamic volumetric container** with configurable dimensions and channel count.
 
 The goals of v0.3 are:
 
-- Remove the hard-coded 16×16×16, 1-channel limitation.
-- Allow arbitrary (but bounded) volume sizes and channels.
-- Maintain backward compatibility with existing files and tools.
-- Keep the layout simple and tensor-friendly.
+* Remove the hard-coded 16×16×16, 1-channel limitation.
+* Allow arbitrary (but bounded) volume sizes and channels.
+* Maintain backward compatibility with existing files and tools.
+* Keep the layout simple and tensor-friendly.
 
 CIVD v0.3 — Dynamic Dimensions and Channels
 
@@ -50,7 +56,8 @@ The spec allows future versions to append extended metadata past byte 52.
 
 The payload volume is stored as:
 
-[channel][z][y][x]
+\[channel]\[z]\[y]\[x]
+
 
 
 This is channel-major, making it compatible with:
@@ -72,13 +79,15 @@ Because robotics and vision pipelines expect:
 C × D × H × W
 
 
+
 And CIVD is designed to be “AI-native, robotics-native, tensor-native.”
 
 3. Capacity Rules
 
 The maximum payload is:
 
-capacity = X * Y * Z * Channels
+capacity = X \* Y \* Z \* Channels
+
 
 
 Examples:
@@ -97,20 +106,20 @@ This balances performance with capability during early adoption.
 v0.3 can decode older files:
 
 v0.1 signature:
-MAGIC = "CI3\x00"
+MAGIC = "CI3\\x00"
 VERSION = 0x0001
 CHANNELS = 1
 DIMS = 16×16×16
 
 v0.2 signature:
-MAGIC = "CI3\x00"
+MAGIC = "CI3\\x00"
 VERSION = 0x0002
 CHANNELS = 4
 DIMS = 16×16×16
 
 How v0.3 handles them:
 
-If magic = CI3\x00 → treat as legacy CI formats
+If magic = CI3\\x00 → treat as legacy CI formats
 
 Auto-upgrade to CIVD internal structure
 
@@ -165,3 +174,4 @@ Forward-compatible header
 Full backward compatibility
 
 It is the first step toward a volumetric data standard for robotics, AI memory systems, and 3D-aware simulation pipelines.
+
