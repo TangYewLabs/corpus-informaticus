@@ -2,12 +2,13 @@
 """
 Legacy CI3 v0.2 decode demo (historical / backward compatibility).
 
-This script exists only to prove legacy CI3 artifacts can still be decoded.
+CI3 is an early precursor format retained only for backward compatibility and
+historical reference.
 
 Primary format going forward: CIVD (Corpus Informaticus Volumetric Data)
-- Snapshot demo:  examples/v07/snapshot_demo.py
-- Snapshot v0.8:  examples/v08/snapshot_v08_demo.py
-- Tile-pack v0.8: examples/v08/tile_pack_v08_demo.py
+- Snapshot v0.7:  python examples/v07/snapshot_demo.py
+- Snapshot v0.8:  python examples/v08/snapshot_v08_demo.py
+- Tile-pack v0.8: python examples/v08/tile_pack_v08_demo.py
 """
 
 import os
@@ -28,25 +29,32 @@ def main() -> None:
     legacy_path = os.path.join(PROJECT_ROOT, "examples", "legacy_ci3", "hello_v02.ci3")
 
     if not os.path.exists(legacy_path):
-        print("Legacy CI3 v0.2 file not found:", legacy_path)
-        print("If you removed legacy artifacts, this is expected.")
+        print(f"Legacy CI3 v0.2 sample not found:\n  {legacy_path}")
+        print()
+        print("This is not an error if you removed legacy artifacts.")
         print("For CIVD demos, run:")
         print("  python examples/v08/snapshot_v08_demo.py")
         print("  python examples/v08/tile_pack_v08_demo.py")
         return
 
-    data, header = decode_ci3_v02(open(legacy_path, "rb").read())
+    with open(legacy_path, "rb") as f:
+        raw = f.read()
+
+    data, header = decode_ci3_v02(raw)
 
     print("Decoded legacy CI3 v0.2 corpus:")
     print("  path       :", legacy_path)
-    print("  orig_length:", header.orig_length)
+    print("  orig_length:", getattr(header, "orig_length", "<unknown>"))
+
+    # Best-effort print for demo purposes
     try:
         msg = data.decode("utf-8", errors="replace")
         print("  payload    :", msg)
     except Exception:
-        print("  payload    : <binary data> (not utf-8)")
+        print(f"  payload    : <binary data> ({len(data)} bytes)")
 
-    print("\nCIVD is the active format family going forward.")
+    print()
+    print("CIVD is the active format family going forward.")
 
 
 if __name__ == "__main__":
