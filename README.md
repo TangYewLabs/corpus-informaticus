@@ -366,8 +366,8 @@ tests/
     test_tile_pack_v07.py
 
 docs/media/
-    banner.png
-    voxel_anatomy.png
+    civd_snapshot_tiling.png
+    civd_voxel_anatomy.png
 ```
 
 ---
